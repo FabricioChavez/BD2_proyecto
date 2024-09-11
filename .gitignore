@@ -1,0 +1,8 @@
+# Ignorar la carpeta .idea (configuración de JetBrains CLion/IDEA)
+.idea/
+
+# Ignorar la carpeta de compilación de CMake (carpeta de salida)
+cmake-build-debug/
+
+# Ignorar el archivo CMakeLists.txt (si decides no incluirlo en tu repo)
+CMakeLists.txt
