@@ -7,7 +7,7 @@ using  namespace std;
 struct Record{
     int code;
     char name[20];
-};
+};//24 size
 
 template<typename Tk>
 struct indexNode{
@@ -18,7 +18,7 @@ struct indexNode{
 
 
 };
-
+//sizeof(Tk)*(2m-1) + 8
 struct dataPage{
     Record records[page_size];
     int next_page;
@@ -37,21 +37,26 @@ private:
     indexNode<Tk> * root;
     dataPage current;
     int metadata_size = int(sizeof(int));
+    int index_length;
+    int data_length;
     int index_fl_top; //Cabeza de puntero logico de la free list en indexfile
     int data_fl_top; //Cabeza de puntero logico de la free list en datafile
 public:
 
     BplusTree(){
-        create_new_files();
-        lift_metadata();
-
+        index_length = sizeof(indexNode<Tk>);
+        data_length = sizeof(dataPage);
+        create_new_files();//Create the new files in case they do not exist and write the metadata for freelist
+        lift_metadata(); // Lift metadata if possible
     }
 
 private:
     template<class T>
-    int get_total_size(T generic_node ){
-
-
+    int get_total_size(fstream file, T generic_node ){
+        file.seekg(0 , ios::end);
+        int total = int(file.tellg()) - metadata_size;
+        int object_size = sizeof(T);
+        return total/object_size;\
     }
 
     void create_new_files(){
@@ -102,26 +107,39 @@ private:
 
 
     }
+
+
     void read_index_node_in_pos(fstream file , indexNode<Tk> &index_node , int pos)
     {
-
-
+        file.seekg(metadata_size+ pos*index_length, ios::beg);
+        file.read((char*)(&index_node) , index_length);
 
     }
-    void write_index_node_in_pos(fstream& file ,indexNode<Tk> index_node , int pos){
+    void write_index_node_in_pos(fstream& file ,const indexNode<Tk> index_node , int pos){
+
+        file.seekp(metadata_size + pos*index_length , ios::beg);
+        file.write((char*)(&index_node) , index_length);
 
     }
 
     void read_page_node_in_pos(fstream file  , dataPage &data_node , int pos){
+        file.seekg(metadata_size+ pos*data_length, ios::beg);
+        file.read((char*)(&data_node) , data_length);
 
     }
     void write_page_node_in_pos(fstream& file ,dataPage data_node , int pos){
+        file.seekg(metadata_size+ pos*data_length, ios::beg);
+        file.read((char*)(&data_node) , data_length);
 
     }
 
 
-
-
-
-
 };
+
+
+int main(){
+
+
+
+
+}
