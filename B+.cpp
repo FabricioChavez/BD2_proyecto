@@ -14,6 +14,7 @@ struct Record{
     int code;
     char name[20];
 
+
     Record(){
 
     }
@@ -23,17 +24,17 @@ struct Record{
     }
 
 
-    bool operator<(Record<Tk> other)
+    bool operator<(Record<Tk> other) const
     {
         return key < other.key;
     }
 
-    bool operator>(Record<Tk> other)
+    bool operator>(Record<Tk> other) const
     {
         return key > other.key;
     }
 
-    bool operator==(Record<Tk> other)
+    bool operator==(Record<Tk> other) const
     {
         return key == other.key;
     }
@@ -75,7 +76,7 @@ struct indexNode{
         cout<<"Next removed :"<<next_removed<<endl;
         cout<<">>>>>>>>Keys >>>>>>>>>>>>>>>>>>>>>>"<<endl;
         for (int i = 0; i <count ; ++i) {
-            cout<<setw(10)<<key[i]<<" ";
+            cout<<setw(10)<<" ["<<key[i]<<" ]\t";
         }
         cout<<">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"<<endl;
         cout<<"<<<<<<<<Children pointer<<<<<<<<<<<"<<endl;
@@ -83,9 +84,10 @@ struct indexNode{
         if(count>0)
         {
             for (int i = 0; i <count+1 ; ++i) {
-                cout<<setw(10)<<children[i]<<" ";
+                cout<<setw(10)<<"[ "<<children[i]<<" ]\t ";
             }
         }
+        cout<<endl;
 
         cout<<"<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"<<endl;
 
@@ -143,11 +145,9 @@ public:
     BplusTree(){
         index_length = sizeof(indexNode<Tk>);
         data_length = sizeof(dataPage<Tk>);
-        create_new_files();//Create the new files in case they do not exist and write the metadata for freelist
-
-        print_all();
-
-        //        lift_metadata(); // Lift metadata if possible
+        create_index_files();//Create the new files in case they do not exist and write the metadata for freelist
+       create_page_file();
+        lift_metadata(); // Lift metadata if possible
     }
 
 
@@ -156,8 +156,10 @@ public:
 
         fstream file_index(indexfile , ios::binary | ios::in|ios::out);
         fstream file_data(datafile , ios::binary |ios::in | ios::out);
-
-        insert(file_index , file_data , record , 0 , -1 ,-1 ,Tk{} , false );
+        int rl_default = -1;
+        Tk key_default;
+        bool flag = false;
+        insert(file_index , file_data , record , 0 , rl_default ,rl_default ,key_default , flag );
 
         file_index.close();
         file_data.close();
@@ -175,13 +177,14 @@ public:
 
             if(node.count == 0) // Si realmente aun no hay nada en root solo se inserta directamente
             {
-
+//                cout<<"Insertando primera vez :3"<<endl;
                 if(insert_in_leaf(file_data ,0 , record)) {
                     return;
                 }else {
+//                    cout<<"Primer split"<<endl;
                     //Primer split
                     dataPage<Tk> b = read_page_node_in_pos(file_data , 0);
-                    tuple<int , int , Tk> lrk = split_leaf_node(datafile , 0, b , record  );
+                    tuple<int , int , Tk> lrk = split_leaf_node(file_data , 0, b , record  );
                     //Dos nuevos primeros nodos generados
                     int left_leaf_pointer = get<0>(lrk);
                     int right_leaf_pointer =get<1>(lrk);
@@ -195,18 +198,23 @@ public:
             }
 
 
-            int pos =  int(upper_bound(node.key  , node.key + size , record.key) - &node.key[0]) ;
+            int pos =  int(upper_bound(node.key  , node.key + node.count , record.key) - &node.key[0]) ;
+
+//            cout<<"Se ubicara en la siguiente posicion "<<pos<<"para insertar "<<record.key<<endl;
 
             if(insert_in_leaf(file_data , pos, record)) {
                 return;
             }else {
                 //Si no hay espacio se splitea la hoja y luego se inserta esto en el index
                 dataPage<Tk> b = read_page_node_in_pos(file_data , pos);
-                tuple<int , int , Tk> lrk = split_leaf_node(datafile , pos, b , record  );
+                tuple<int , int , Tk> lrk = split_leaf_node(file_data , pos, b , record  );
                 //Dos nuevos primeros nodos generados
                 int left_leaf_pointer = get<0>(lrk);
                 int right_leaf_pointer =get<1>(lrk);
                 Tk split_key = get<2>(lrk);
+                cout<<"LEFT LEAF  "<<left_leaf_pointer<<endl;
+                cout<<"RIGHT LEAF "<<right_leaf_pointer<<endl;
+                cout<<"NEW KEY    "<<split_key<<endl;
 
 
                 //insertar ordenadamente la nueva key y ubicar a sus hijos
@@ -218,7 +226,7 @@ public:
                     //Si este nodo es la raiz y a la vez sabemos que es el last entones es la primera vez q sube esta propiedad de raiz y hace crecer el arbol
                     if(node.is_root)
                     {
-
+                        cout<<"VAMOS A SPLITEAR NUESTRA PRIMERA ROOT :3"<<endl;
                         indexNode<Tk> new_root;
                         new_root.is_root =true;
                         new_root.is_last = false;
@@ -227,19 +235,25 @@ public:
                         int left_index = get<0>(lrk_index);
                         int right_index = get<1>(lrk_index);
                         Tk new_root_key = get<2>(lrk_index);
+                        cout<<"ESO ES LO QUE SALE DE SPLITEAR LA ROOT EN LA POSICIONDADA "<<pos<<"CON ESTOS DATOS GENERADOS"<<endl;
+                        cout<<"LEFT INDEX  "<<left_index<<endl;
+                        cout<<"RIGHT INDEX "<<right_index<<endl;
+                        cout<<"NEW KEY ROOT   "<<new_root_key<<endl;
 
                         //calculuar un nuevo index logico este sera el nuevo left
                         int new_logical_index = calculate_index(node);
+                        cout<<"La nueva posicion logica para la raiz es "<<new_logical_index<<endl;
                         //Extraer el puntero izquierdo de su posicion
                         indexNode<Tk> old_left = read_index_node_in_pos(file_index , left_index);
                         //escribir left en la nueva posicion
                         write_index_node_in_pos(file_index,old_left , new_logical_index);
                         //escribir  root en la poscion cero
+                        new_root.key[new_root.count]=new_root_key; //asigna la primera key del split
                         new_root.children[new_root.count]=new_logical_index;//se asigna nodo de la izquierda
                         new_root.children[++new_root.count]=right_index;//se asigna nodo de la derehca
-                        new_root.key[new_root.count]=new_root_key; //asigna la primera key del split
+
                         //escribir la raiz --> siempre posicion cero
-                        write_page_node_in_pos(file_index , new_root, 0);
+                        write_index_node_in_pos(file_index , new_root, 0);
                         //retornar
                         return;
 
@@ -309,7 +323,7 @@ public:
                     new_root.children[++new_root.count]=right_index;//se asigna nodo de la derehca
                     new_root.key[new_root.count]=new_root_key; //asigna la primera key del split
                     //escribir la raiz --> siempre posicion cero
-                    write_page_node_in_pos(file_index , new_root, 0);
+                    write_index_node_in_pos(file_index , new_root, 0);
                     there_is_excess = false;
 
                 }else {
@@ -362,16 +376,16 @@ public:
 
         fstream file_index(indexfile , ios::binary | ios::in|ios::out);
         fstream file_data(datafile , ios::binary |ios::in | ios::out);
-        int index_total = get_total_size<indexNode<Tk>>(file_index );
-        int total_pages = get_total_size<dataPage<Tk>>(file_data);
+        int total_pages = get_total_size<dataPage<Tk>>(datafile);
+        int index_total = get_total_size<indexNode<Tk>>(indexfile);
+
+        cout<<"Number of indexes -->"<<index_total<<endl;
+        cout<<"Number of pages ---->"<<total_pages<<endl;
+
         cout<<"-------------INDEX NODES BEGIN ---------------------------"<<endl;
-
-        file_index.seekg(0 , ios::beg);
-        file_data.seekg(0, ios::beg);
-
         for (int i = 0; i < index_total; ++i) {
             index_node = read_index_node_in_pos(file_index , i);
-            cout<<"------- Node number ["<<i<<"]"<<"-----------"<<endl;
+            cout<<"-------index Node number ["<<i<<"]"<<"-----------"<<endl;
             index_node.showdata();
             cout<<"---------------------------------------------"<<endl;
 
@@ -382,7 +396,7 @@ public:
         cout<<"-------------DATA NODES BEGIN ---------------------------"<<endl;
         for (int i = 0; i < total_pages; ++i) {
             data_node = read_page_node_in_pos(file_data , i);
-            cout<<"------- Node number ["<<i<<"]"<<"-----------"<<endl;
+            cout<<"------- data Node number ["<<i<<"]"<<"-----------"<<endl;
             data_node.showdata();
             cout<<"---------------------------------------------"<<endl;
 
@@ -398,26 +412,32 @@ private:
 
     //funciones de insercion
     //inserta ordenadamente en hoja
-    bool insert_in_leaf(fstream & file, int index  , Record<Tk>& record){
+    bool insert_in_leaf(fstream & file, int index  , const Record<Tk>& record){
 
 
-        dataPage<Tk> to_insert = read_page_node_in_pos(file , index);
-        //Si la insercion no es posible retorna false (esto luego se maneja en un split)
-        if(to_insert.count+1>page_size) return false;
+       dataPage<Tk> to_insert = read_page_node_in_pos(file , index);
+
+        if(to_insert.count+1>page_size) {
+//            cout<<"la proxima insercion romple reglas"<<endl;
+            return false;
+        }
+
+
 
         if(to_insert.count ==0){
+
             to_insert.records[to_insert.count++]=record;
+            write_page_node_in_pos(file , to_insert , index);
             return true;
         }
         //encuentra la poscion del primer elemento mayor al que se inserta
-        auto pos  = upper_bound(to_insert.records , to_insert.records+page_size , record) - &to_insert.records[0];
-
+       int  pos  = upper_bound(to_insert.records , to_insert.records+to_insert.count , record) - &to_insert.records[0];
         //inserta ordenadamente en la posicon
-        for (int i = ++to_insert.count; i >=pos ; --i) {\
+        for (int i = ++to_insert.count-1; i >=pos ; --i) {\
             if(i==pos)
-                to_insert[i]=record;
+                to_insert.records[i]=record;
             if(i>pos)
-                to_insert[i]=to_insert[i-1];
+                to_insert.records[i]=to_insert.records[i-1];
         }
 
         //Escribir el valor del bucker actualizado en memoria
@@ -428,46 +448,55 @@ private:
     }
 
     //inserta ordenadamente en nodo interno
-    bool insert_in_index(fstream & file ,   int index , Tk new_key ,  int left_pointer , int right_pointer ){
+    bool insert_in_index(fstream & file , int index, Tk new_key, int left_pointer, int right_pointer) {
 
-        indexNode<Tk> to_insert = read_index_node_in_pos(file , index);
-        //Si se llena con esto se mandaria a un split en vez de insertarse se manda falso por q se viola la regla
-        if(to_insert.count+1>m-1) return false;
+        indexNode<Tk> to_insert = read_index_node_in_pos(file, index);
 
-        //Si se trata del primer insert solo se pone en la primera posicion
+        // Si se llena con esto se mandaría a un split, por lo tanto retornamos falso
+        if(to_insert.count + 1 > m - 1) return false;
 
-        if(to_insert.count==0)
-        {   to_insert.children[to_insert.count]=left_pointer;
-            to_insert.children[to_insert.count]= right_pointer;
-            to_insert.key[to_insert.count++]=new_key;
+        // Si es el primer insert, solo se pone en la primera posición
+        if(to_insert.count == 0) {
+            to_insert.children[0] = left_pointer;
+            to_insert.children[1] = right_pointer;
+            to_insert.key[0] = new_key;
+            to_insert.count++;
+            write_index_node_in_pos(file, to_insert, index);
             return true;
         }
 
-        //encuentra la poscion adecuada de la key
+        // Encuentra la posición adecuada de la key
+        int pos = int(upper_bound(to_insert.key, to_insert.key + to_insert.count, new_key) - &to_insert.key[0]);
 
-        int pos = int(upper_bound(to_insert.key , to_insert.key+to_insert.count , new_key) -&to_insert.key[0]);
-        //Ubicar la key y los nodos hijos en la posicon adecuada
-        for (int i = ++to_insert.count+1; i>pos  ; --i) {
+//        cout << "BEFORE THE INSERT" << endl;
+//        to_insert.showdata();
 
-            if(i==pos)
-            {
-                to_insert.key[i] = new_key;
-                to_insert.children[pos]=left_pointer;
-                to_insert.children[pos+1]=right_pointer;
+        // Insertamos la nueva clave y ajustamos punteros en un solo ciclo
+        for (int i = to_insert.count; i >= pos; --i) {
+            // Mover las claves y punteros hacia adelante si es necesario
+            if (i > pos) {
+                to_insert.key[i] = to_insert.key[i - 1];
+                to_insert.children[i + 1] = to_insert.children[i];
             }
-
-
-            if(i > pos and i <= to_insert.count)  to_insert.key[i]=to_insert.key[i-1];
-
-            if(i>pos+1) to_insert.children[i]=to_insert.children[i-1];
-
+            // Insertar la nueva clave y los punteros correspondientes
+            if (i == pos) {
+                to_insert.key[i] = new_key;
+                to_insert.children[pos] = left_pointer;
+                to_insert.children[pos + 1] = right_pointer;
+            }
         }
-        //Se escribe el nodo en la posicion indicada
-        write_index_node_in_pos(file , to_insert , index);
 
-        //retornar verdadero una vez concluye el proceso
+        // Incrementar el conteo de claves en el nodo
+        to_insert.count++;
+//
+//        cout << "AFTER THE INSERT" << endl;
+//        to_insert.showdata();
+
+        // Escribimos el nodo actualizado
+        write_index_node_in_pos(file, to_insert, index);
+
+        // Retornamos verdadero una vez concluye el proceso
         return true;
-
     }
 
 
@@ -493,7 +522,7 @@ private:
 
 
             if(i==pos)
-                r[i]=new_record.key;
+                r[i]=new_record;
 
             if(i>pos)
                 r[i]=to_split.records[i-1];
@@ -512,10 +541,12 @@ private:
         }
         dataPage<Tk> dummy;//variable para activar sobrecarga
         int next_logical_index = calculate_index(dummy);  //calcuar pos para ubicar el nuevo page bucket generado
+
+        cout<<"ESTA ES LA SIGUIENTE POSICION LOGICA -->"<<next_logical_index<<endl;
         right_new.next_page = to_split.next_page; // Asignar puntero a la derecha que el nodo original apuntaba
         left_old.next_page =next_logical_index;  //  asignar el valor del index nuevo a la hoja izquierda para enlazarlos
         write_page_node_in_pos(file , left_old , index); // escribir el left en la posicon original
-        write_page_node_in_pos(file , new_record , next_logical_index); // escribir el right en la nueva posicion
+        write_page_node_in_pos(file , right_new , next_logical_index); // escribir el right en la nueva posicion
 
         tuple<int , int , Tk> lrk = {index , next_logical_index , new_key};
 
@@ -525,14 +556,14 @@ private:
 
     tuple< int , int, Tk>  split_index_node(fstream &file ,int index,indexNode<Tk> & to_split  , Tk key  , int new_child_l , int new_child_right  ){
         Tk rkey[m];
-        Tk rchildren[m+1];
+        int rchildren[m+1];
         indexNode<Tk> left;
         indexNode<Tk> right;
         left.is_last = right.is_last = to_split.is_last; // Si se da el caso de que el nodo es lasts se pasa esa propiedad si no lo es no se pasa la propiedad
 
         Tk new_key;
         int mid = (m)/2;
-        auto pos = upper_bound(to_split.key , to_split.key + m-1 , key)  - &to_split.key[0];
+        auto pos = upper_bound(to_split.key , to_split.key + to_split.count , key)  - &to_split.key[0];
 
         //Reorganizar nodos internos
         for (int i = 0; i < m+1; ++i) {
@@ -547,7 +578,7 @@ private:
 
             if(i == pos){
                 if(i<m)
-                    rkey[i]==key;
+                    rkey[i]=key;
 
                 rchildren[i]= new_child_l;
                 rchildren[i+1]= new_child_right;
@@ -568,6 +599,16 @@ private:
             if(i==mid) new_key = rkey[i];
         }
 
+        cout<<"KEYS"<<endl;
+        for (int j = 0; j < m; ++j) {
+            cout<<rkey[j]<<" ";
+        }
+        cout<<endl;
+        cout<<"CHILDREN"<<endl;
+        for (int j = 0; j < m+1; ++j) {
+            cout<<rchildren[j]<<" ";
+        }
+
         //Splitear nodo interno
         int i=0;
         for ( ; i < mid ; ++i) {
@@ -576,22 +617,31 @@ private:
 
         }
 
-        left.children[left.count+1] = rchildren[++i];
+        left.children[left.count] = rchildren[i];
 
-        for(; i<m ; i++)
-        {    right.childrenq[right.count]=rchildren[i];
+        for(++i; i<m ; ++i)
+        {    right.children[right.count]=rchildren[i];
             right.key[right.count++]=rkey[i];
         }
 
-        right.children[right.count+1]=rchildren[++i];
+        right.children[right.count]=rchildren[i];
 
         //fin de split
 
+        cout<<"LEFT"<<endl;
+        left.showdata();
+        cout<<"RIGHT"<<endl;
+        right.showdata();
+
+
         indexNode<Tk> dummy;
         int next_logical_index = calculate_index(dummy);
+        cout<<" SE VAN A ESCRIBIR EN LAS SIQUIENTES POSCIONES "<<index<< " Y "<<next_logical_index<<endl;
         write_index_node_in_pos(file , left , index);
-        write_page_node_in_pos(file , right , next_logical_index);
+        write_index_node_in_pos(file , right , next_logical_index);
 
+        cout<<"la siguiente posicion sera "<<calculate_index(dummy)<<endl;
+\
         tuple<int , int , Tk > lrk={index , next_logical_index , new_key};
 
         return lrk;
@@ -617,33 +667,34 @@ private:
         }
 
         file.seekg(0 , ios::end);
-        int total = int(file.tellg())-metadata_size/data_length;
-        return total+1;
+        int total = (int(file.tellg())-metadata_size)/data_length;
+        file.close();
+        return total;
 
     }
 
 
 
-    int calculate_index(indexNode<Tk> ){
-
-        fstream file(indexfile , ios::in|ios::out);
+    int calculate_index(indexNode<Tk>) {
+        fstream file(indexfile, ios::in|ios::out);
         indexNode<Tk> b;
 
-        if(index_fl_top !=-1)
-        {
-            int ans = data_fl_top;
-            b = read_index_node_in_pos(file , index_fl_top);
+        if (index_fl_top != -1) {
+            int ans = index_fl_top;  // Cambiado de data_fl_top a index_fl_top
+            b = read_index_node_in_pos(file, index_fl_top);
             index_fl_top = b.next_removed;
-            file.seekp(0,ios::beg);
+            file.seekp(0, ios::beg);
             file.write((char*)(&index_fl_top), metadata_size);
+            file.flush();  // Asegura que la actualización del free list se refleje en disco
             return ans;
         }
 
-        file.seekg(0 , ios::end);
-        int total = int(file.tellg())-metadata_size/index_length;
-        return total+1;
-
+        file.seekg(0, ios::end);
+        int total = (int(file.tellg()) - metadata_size) / index_length;
+        file.close();
+        return total;
     }
+
 
 
     template<class T>
@@ -657,57 +708,68 @@ private:
 
 
     template<class T>
-    int get_total_size(fstream& file ){
+    int get_total_size(string filename){
+
+        fstream file(filename ,ios::binary|ios::in|ios::out);
         file.seekg(0 , ios::end);
+        cout<<"GET TOTAL SIZE"<<file.tellg()<<endl;
         int total = int(file.tellg()) - metadata_size;
         int object_size = sizeof(T);
+        file.close();
         return total/object_size;
     }
 
-    void create_new_files(){
-
-        indexNode<Tk> default_node;
-        default_node.is_root=true;
-        default_node.is_last = true;
-
-        default_node.showdata();
-
-
+    void create_page_file(){
+        //Crear indexfile si no existiera
         dataPage<Tk> default_page_node;
-
-        default_page_node.showdata();
-        //Crear datafile si no existiera
         fstream file(datafile , ios::binary|ios::in|ios::out);
 
         if(!file.is_open())
         {
             file.open(datafile, ios::binary|ios::out);
+            file.close();
+
+
             int default_free_list_top = -1;
+            file.open(datafile , ios::binary|ios::in|ios::out);
             file.seekp(0, ios::beg);
             file.write((char*)(&default_free_list_top) , metadata_size);
-            file.seekp(metadata_size , ios::beg);
-            file.write((char*)(&default_node) , index_length); //inicializa la root
+            file.write((char*)(&default_page_node) ,data_length);
+            file.seekg(0,ios::end);
+            cout<<file.tellg()<<endl;
             file.close();
         }
 
-        file.close();
+    }
 
-        //Crear indexfile si no existiera
+    void create_index_files(){
 
-        fstream file2(indexfile , ios::binary|ios::in|ios::out);
+        indexNode<Tk> default_node;
+        default_node.is_root=true;
+        default_node.is_last = true;
 
-        if(!file2.is_open())
+        //Crear datafile si no existiera
+        fstream file(indexfile , ios::binary|ios::in|ios::out);
+
+        if(!file.is_open())
         {
-            file2.open(indexfile, ios::binary|ios::out);
+            file.open(indexfile, ios::binary|ios::out);
+            file.close();
+
+
             int default_free_list_top = -1;
-            file2.seekp(0, ios::beg);
-            file2.write((char*)(&default_free_list_top) , metadata_size);
-            file2.seekp(metadata_size , ios::beg);
-            file2.write((char*)(&default_page_node) ,data_length);
-            file2.close();
+            file.open(indexfile , ios::binary|ios::in|ios::out);
+            file.seekp(0, ios::beg);
+            file.write((char*)(&default_free_list_top) , metadata_size);
+            file.write((char*)(&default_node) , index_length); //inicializa la root
+
+            file.seekg(0,ios::end);
+            cout<<file.tellg()<<endl;
+
+            file.close();
+
         }
 
-        file2.close();
 
     }
     void lift_metadata(){
@@ -734,11 +796,11 @@ private:
         return index_node;
     }
     void write_index_node_in_pos(fstream& file ,const indexNode<Tk> index_node , int pos){
-
         file.seekp(metadata_size + pos*index_length , ios::beg);
         file.write((char*)(&index_node) , index_length);
-
+        file.flush();  // Asegura que los datos se escriban en disco
     }
+
 
     dataPage<Tk> read_page_node_in_pos(fstream &file  , int pos){
         dataPage<Tk> data_node;
@@ -749,7 +811,7 @@ private:
     }
     void write_page_node_in_pos(fstream& file ,dataPage<Tk>& data_node , int pos){
         file.seekg(metadata_size+ pos*data_length, ios::beg);
-        file.read((char*)(&data_node) , data_length);
+        file.write((char*)(&data_node) , data_length);
 
     }
 
@@ -804,11 +866,14 @@ std::vector<Record<Tk>> generateRecords() {
 
 int main(){
 
-//   vector<Record<int>> r = generateRecords<int>();
+   vector<Record<int>> r = generateRecords<int>();
 
    BplusTree<int> test;
-//   test.print_all();
-
+//
+    for (int i = 0; i < 9 ; ++i) {
+        test.insert(r[i]);
+    }
+ test.print_all();
 
 
 
