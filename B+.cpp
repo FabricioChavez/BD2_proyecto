@@ -22,7 +22,10 @@ struct Record{
     Record(Tk key, int code, string name_) : key(key), code(code){
         strcpy(name , name_.c_str());
     }
-
+// Constructor de copia
+    Record(const Record<Tk>& other) : key(other.key), code(other.code) {
+        memcpy(name, other.name, sizeof(name)); // Copia el contenido del arreglo name
+    }
 
     bool operator<(Record<Tk> other) const
     {
@@ -156,10 +159,11 @@ public:
 
         fstream file_index(indexfile , ios::binary | ios::in|ios::out);
         fstream file_data(datafile , ios::binary |ios::in | ios::out);
-        int rl_default = -1;
+        int r_default = -1;
+        int l_default = -1;
         Tk key_default;
         bool flag = false;
-        insert(file_index , file_data , record , 0 , rl_default ,rl_default ,key_default , flag );
+        insert(file_index , file_data , record , 0 , l_default ,r_default ,key_default , flag );
 
         file_index.close();
         file_data.close();
@@ -200,21 +204,21 @@ public:
 
             int pos =  int(upper_bound(node.key  , node.key + node.count , record.key) - &node.key[0]) ;
 
-//            cout<<"Se ubicara en la siguiente posicion "<<pos<<"para insertar "<<record.key<<endl;
+//            cout<<"Se ubicara en la siguiente posicion "<<node.children[pos]<<"para insertar "<<record.key<<endl;
 
-            if(insert_in_leaf(file_data , pos, record)) {
+            if(insert_in_leaf(file_data , node.children[pos], record)) {
                 return;
             }else {
                 //Si no hay espacio se splitea la hoja y luego se inserta esto en el index
-                dataPage<Tk> b = read_page_node_in_pos(file_data , pos);
-                tuple<int , int , Tk> lrk = split_leaf_node(file_data , pos, b , record  );
+                dataPage<Tk> b = read_page_node_in_pos(file_data , node.children[pos]);
+                tuple<int , int , Tk> lrk = split_leaf_node(file_data , node.children[pos], b , record  );
                 //Dos nuevos primeros nodos generados
                 int left_leaf_pointer = get<0>(lrk);
                 int right_leaf_pointer =get<1>(lrk);
                 Tk split_key = get<2>(lrk);
-                cout<<"LEFT LEAF  "<<left_leaf_pointer<<endl;
-                cout<<"RIGHT LEAF "<<right_leaf_pointer<<endl;
-                cout<<"NEW KEY    "<<split_key<<endl;
+//                cout<<"LEFT LEAF  "<<left_leaf_pointer<<endl;
+//                cout<<"RIGHT LEAF "<<right_leaf_pointer<<endl;
+//                cout<<"NEW KEY    "<<split_key<<endl;
 
 
                 //insertar ordenadamente la nueva key y ubicar a sus hijos
@@ -226,23 +230,26 @@ public:
                     //Si este nodo es la raiz y a la vez sabemos que es el last entones es la primera vez q sube esta propiedad de raiz y hace crecer el arbol
                     if(node.is_root)
                     {
-                        cout<<"VAMOS A SPLITEAR NUESTRA PRIMERA ROOT :3"<<endl;
+//                        cout<<"VAMOS A SPLITEAR NUESTRA PRIMERA ROOT :3"<<endl;
                         indexNode<Tk> new_root;
                         new_root.is_root =true;
                         new_root.is_last = false;
+                        int left_index ;
+                        int right_index;
+                        Tk new_root_key ;
                         //splitear el nuevo index (las hojas se asignaran dentro ordenadamente a cada mitad correspondiente)
-                        tuple<int , int , Tk>  lrk_index = split_index_node(file_index ,logical_pointer,node , split_key , left_leaf_pointer , right_leaf_pointer);
-                        int left_index = get<0>(lrk_index);
-                        int right_index = get<1>(lrk_index);
-                        Tk new_root_key = get<2>(lrk_index);
-                        cout<<"ESO ES LO QUE SALE DE SPLITEAR LA ROOT EN LA POSICIONDADA "<<pos<<"CON ESTOS DATOS GENERADOS"<<endl;
-                        cout<<"LEFT INDEX  "<<left_index<<endl;
-                        cout<<"RIGHT INDEX "<<right_index<<endl;
-                        cout<<"NEW KEY ROOT   "<<new_root_key<<endl;
+                       split_index_node(file_index ,logical_pointer,node , split_key , left_leaf_pointer , right_leaf_pointer , left_index , right_index  , new_root_key);
+
+
+
+//                        cout<<"ESO ES LO QUE SALE DE SPLITEAR LA ROOT EN LA POSICIONDADA "<<pos<<"CON ESTOS DATOS GENERADOS"<<endl;
+//                        cout<<"LEFT INDEX  "<<left_up<<endl;
+//                        cout<<"RIGHT INDEX "<<right_index<<endl;
+//                        cout<<"NEW KEY ROOT   "<<new_root_key<<endl;
 
                         //calculuar un nuevo index logico este sera el nuevo left
                         int new_logical_index = calculate_index(node);
-                        cout<<"La nueva posicion logica para la raiz es "<<new_logical_index<<endl;
+//                        cout<<"La nueva posicion logica para la raiz es "<<new_logical_index<<endl;
                         //Extraer el puntero izquierdo de su posicion
                         indexNode<Tk> old_left = read_index_node_in_pos(file_index , left_index);
                         //escribir left en la nueva posicion
@@ -260,14 +267,20 @@ public:
                     }
 
 
-                    // En caso de que no sea root solo se splitea y se manda hacia arriba los valores a insertar en el nivel superior (todo lo demas sera manegada por la vuelta de la recursion)
-
+//                    // En caso de que no sea root solo se splitea y se manda hacia arriba los valores a insertar en el nivel superior (todo lo demas sera manegada por la vuelta de la recursion)
+//                    cout<<"INDEX --->IZQUIERDA QUE SURGE antes  "<<left_up<<endl;
+//                    cout<<"INDEX --->DERECHA QUE SURGE antes  "<<right_up<<endl;
+//                    cout<<"INDEX --->KEY QUE SURGE antes "<<up_key<<endl;
                     //splitear el nuevo index (las hojas se asignaran dentro ordenadamente a cada mitad correspondiente)
-                    tuple<int , int , Tk>  lrk_index = split_index_node(file_index ,logical_pointer,node , split_key , left_leaf_pointer , right_leaf_pointer);
-                    //Se asignan los valores que subiran en la vuelta de la recursion
-                    left_up = get<0>(lrk_index);
-                    right_up = get<1>(lrk_index);
-                    up_key = get<2>(lrk_index);
+                    split_index_node(file_index, logical_pointer, node, split_key, left_leaf_pointer, right_leaf_pointer , left_up , right_up , up_key);
+
+//                    cout << "Valores devueltos por split_index_node:\n";
+//                    cout << "left_index: " << left_up << "\n";
+//                    cout << "right_index: " << right_up << "\n";
+//                    cout << "new_root_key: " << up_key << "\n";
+
+
+
                     //Con esto se indica a los niveles superiores en la vuelta de la recursion que existe algo que insertar
                     there_is_excess= true;
                     //Retornarn
@@ -281,13 +294,17 @@ public:
 
         }else{
                 //next index te da el indice logico q esta en el child no se use para obtener donde insertar algo
+
             int next_index = get_next_index(node.key ,  node.count, record.key  , node.children );
+//            cout<<"AUN NO ESTOY EN ROOT PERO A VER Q PASA  mi next pos es la SIGUIENTE"<<next_index<<endl;
             insert(file_index , file_data , record , next_index , left_up , right_up , up_key  , there_is_excess);
 
         }
 
 
         //Vuelta de la recursion donde los milagros pasan ;3
+//        cout<<"OK VAMOS DE VUELTA ..."<<endl;
+
 
         if(there_is_excess)
         {
@@ -295,10 +312,13 @@ public:
             //Si no es root no se hace nada fundamentalmetne diferente , ya que se asume que suben los valores
             if(insert_in_index(file_index ,  logical_pointer , up_key , left_up , right_up ))
             {
+//                cout<<"SE INSERTO EL EXCESO ACA"<<endl;
                 //si se inserta y no hay problema solo se pone este flag en falso y ya
                 there_is_excess= false;
             }else{
-
+                int l = left_up;
+                int r = right_up;
+                Tk k = up_key;
 
                 //Si el nodo que se tiene que splitear es root se diverge un poco
                 if(node.is_root){
@@ -306,11 +326,12 @@ public:
                     indexNode<Tk> new_root;
                     new_root.is_root =true;
                     new_root.is_last = false;
+                    int left_index ;
+                    int right_index;
+                    Tk new_root_key ;
                     //splitear el nuevo index (las hojas se asignaran dentro ordenadamente a cada mitad correspondiente)
-                    tuple<int , int , Tk>  lrk_index = split_index_node(file_index ,logical_pointer,node , up_key ,left_up , right_up);
-                    int left_index = get<0>(lrk_index);
-                    int right_index = get<1>(lrk_index);
-                    Tk new_root_key = get<2>(lrk_index);
+                    split_index_node(file_index ,logical_pointer,node , k , l , r , left_index , right_index  , new_root_key);
+
 
                     //calculuar un nuevo index logico este sera el nuevo left
                     int new_logical_index = calculate_index(node);
@@ -319,9 +340,10 @@ public:
                     //escribir left en la nueva posicion
                     write_index_node_in_pos(file_index,old_left , new_logical_index);
                     //escribir  root en la poscion cero
+                    new_root.key[new_root.count]=new_root_key; //asigna la primera key del split
                     new_root.children[new_root.count]=new_logical_index;//se asigna nodo de la izquierda
                     new_root.children[++new_root.count]=right_index;//se asigna nodo de la derehca
-                    new_root.key[new_root.count]=new_root_key; //asigna la primera key del split
+
                     //escribir la raiz --> siempre posicion cero
                     write_index_node_in_pos(file_index , new_root, 0);
                     there_is_excess = false;
@@ -329,12 +351,7 @@ public:
                 }else {
 
                     //splitear el nuevo index (las hojas se asignaran dentro ordenadamente a cada mitad correspondiente)
-                    tuple<int , int , Tk>  lrk_index = split_index_node(file_index ,logical_pointer,node , up_key , left_up , right_up);
-                    //Se asignan los valores que subiran en la vuelta de la recursion
-                    left_up = get<0>(lrk_index);
-                    right_up = get<1>(lrk_index);
-                    up_key = get<2>(lrk_index);
-
+                    split_index_node(file_index ,logical_pointer,node , k , l , r    ,left_up , right_up , up_key);
 
                     //Con esto se indica a los niveles superiores en la vuelta de la recursion que existe algo que insertar
                     there_is_excess= true;
@@ -355,6 +372,37 @@ public:
 
     Record<Tk>* search(Tk key)
     {
+        fstream file_index(indexfile , ios::binary | ios::in|ios::out);
+        fstream file_data(datafile , ios::binary |ios::in | ios::out);
+
+        Record<Tk>* ans= search(key , 0 , file_index , file_data);
+        file_index.close();
+        file_data.close();
+        return ans;
+    }
+
+    Record<Tk> * search(Tk key , int current_node  , fstream & file_index , fstream & file_data)
+    {
+            indexNode<Tk> node = read_index_node_in_pos(file_index , current_node);
+
+            if(node.is_last)
+            {
+
+                int possible_pos = int(upper_bound(node.key , node.key +node.count  , key)-&node.key[0]);
+
+                dataPage<Tk> search_page = read_page_node_in_pos(file_data , node.children[possible_pos]);
+                Record<Tk>* ans = search_in_page(search_page , key);
+
+                return ans;
+
+            }
+
+
+        int next_index = get_next_index(node.key ,  node.count, key , node.children );
+
+       return search(key , next_index , file_index , file_data);
+
+
 
     }
 
@@ -409,6 +457,26 @@ public:
 
 
 private:
+    //funcion para buscar al elemento
+        Record<Tk>* search_in_page(dataPage<Tk>& page, Tk key)
+        {
+            int left = 0;
+            int right = page.count -1;
+
+            while (left <= right) {
+                int mid = left + (right - left) / 2;
+
+                // Comparar el key con el elemento en el medio
+                if (page.records[mid].key == key) {
+                    return new Record<Tk>(page.records[mid]); // Devuelve un puntero al Record encontrado
+                } else if (page.records[mid].key < key) {
+                    left = mid + 1;
+                } else {
+                    right = mid - 1;
+                }
+            }
+            return nullptr; // No se encontró el Record
+        }
 
     //funciones de insercion
     //inserta ordenadamente en hoja
@@ -451,6 +519,8 @@ private:
     bool insert_in_index(fstream & file , int index, Tk new_key, int left_pointer, int right_pointer) {
 
         indexNode<Tk> to_insert = read_index_node_in_pos(file, index);
+
+
 
         // Si se llena con esto se mandaría a un split, por lo tanto retornamos falso
         if(to_insert.count + 1 > m - 1) return false;
@@ -554,7 +624,7 @@ private:
 
     }
 
-    tuple< int , int, Tk>  split_index_node(fstream &file ,int index,indexNode<Tk> & to_split  , Tk key  , int new_child_l , int new_child_right  ){
+    void  split_index_node(fstream &file ,int index,indexNode<Tk> & to_split  , Tk key  , int new_child_l , int new_child_right  , int & l_ans , int & r_ans , Tk& ans){
         Tk rkey[m];
         int rchildren[m+1];
         indexNode<Tk> left;
@@ -640,16 +710,21 @@ private:
         write_index_node_in_pos(file , left , index);
         write_index_node_in_pos(file , right , next_logical_index);
 
-        cout<<"la siguiente posicion sera "<<calculate_index(dummy)<<endl;
-\
-        tuple<int , int , Tk > lrk={index , next_logical_index , new_key};
 
-        return lrk;
+        l_ans = index;
+        cout<<"EL VALOR ACA DE MI ANSWER ES ESTA"<<l_ans<<endl;
+        r_ans = next_logical_index;
+        cout<<"EL VALOR ACA DE MI ANSWER ES ESTA AHORA "<<l_ans<<endl;
+        ans = new_key;
+
+
+
+
     }
     //obtiene el puntero en child para la recursion
     int get_next_index(Tk  keys[m-1], int size, Tk key ,  int children[m] ){
        int pos =   int(upper_bound(keys  , keys + size , key) - &keys[0]) ;
-        return children[pos-1];
+        return children[pos];
 
     }
 
@@ -826,26 +901,31 @@ std::vector<Record<Tk>> generateRecords() {
     std::srand(std::time(0));
 
     // Lista de keys
-    Tk keys[] = {27, 16, 24, 10, 37, 15, 25, 38, 32, 8, 31, 2, 45, 6, 36};
+    Tk keys[] = {27, 16, 24, 10, 37, 15, 25, 38, 32, 8, 31, 2, 45, 6, 36 , 50 , 33 , 34,28,29};
     int num_keys = sizeof(keys) / sizeof(keys[0]);
 
-    // Lista de nombres de personajes (Cinderella Girls, Madoka Magica, Bakemonogatari)
+    // Lista de nombres de personajes (Cinderella Girls Idol m@sterU149, Madoka Magica, Bakemonogatari)
     const char* names[] = {
-            "Chika Yokoyama",    // Cinderella Girls
-            "Mai Fukuyama",      // Cinderella Girls
-            "Kozue Yusa",        // Cinderella Girls
-            "Koharu Koga",       // Cinderella Girls
-            "Momoka Sakurai",    // Cinderella Girls
-            "Yukimi Sajo",       // Cinderella Girls
-            "Chie Sasaki",       // Cinderella Girls
-            "Arisu Tachibana",   // Cinderella Girls
-            "Haru Yuuki",        // Cinderella Girls
-            "Madoka Kaname",     // Madoka Magica
-            "Homura Akemi",      // Madoka Magica
-            "Mami Tomoe",        // Madoka Magica
-            "Hitagi Senjougahara",// Bakemonogatari
-            "Mayoi Hachikuji",   // Bakemonogatari
-            "Tsubasa Hanekawa"   // Bakemonogatari
+            "Chika Yokoyama",      // Cinderella Girls Idol m@sterU149
+            "Mai Fukuyama",        // Cinderella Girls Idol m@sterU149
+            "Kozue Yusa",          // Cinderella Girls Idol m@sterU149
+            "Koharu Koga",         // Cinderella Girls Idol m@sterU149
+            "Momoka Sakurai",      // Cinderella Girls Idol m@sterU149
+            "Yukimi Sajo",         // Cinderella Girls Idol m@sterU149
+            "Chie Sasaki",         // Cinderella Girls Idol m@sterU149
+            "Arisu Tachibana",     // Cinderella Girls Idol m@sterU149
+            "Haru Yuuki",          // Cinderella Girls Idol m@sterU149
+            "Madoka Kaname",       // Madoka Magica
+            "Homura Akemi",        // Madoka Magica
+            "Mami Tomoe",          // Madoka Magica
+            "Hitagi Senjougahara", // Bakemonogatari
+            "Mayoi Hachikuji",     // Bakemonogatari
+            "Tsubasa Hanekawa",    // Bakemonogatari
+            "Remilia Scarlet",     // Touhou Embodiment of The Scarlet Devil ;3 (me)
+            "Sakuya Izayoi"  ,      // AKA JACK the ripper from Touhou Embodiment of The Scarlet Devil ;3 (me)
+            "Mima the forgotten",   // PC 98 TH
+            "Renko Usami ",         // Retrospective 53 minutes
+            "Maribel Hearn"         //Retrospective 53 minutes
     };
 
     // Crear vector para almacenar los registros
@@ -870,11 +950,22 @@ int main(){
 
    BplusTree<int> test;
 //
-    for (int i = 0; i < 9 ; ++i) {
-        test.insert(r[i]);
-    }
- test.print_all();
+//    for (int i = 0; i < r.size() ; ++i) {
+//        cout<<"INSERTANDO..."<<r[i].key<<endl;
+//        test.insert(r[i]);
+//    }
+cout<<"_________________________________SEARCH TESTS ____________________________________"<<endl;
+//test.print_all();
+vector<int> search_key{28,29,50,33 , 100};
 
+
+for(int  vals:search_key)
+{
+    auto *it = test.search(vals);
+    if(it== nullptr)
+        cout<<vals<<" not found..."<<endl;
+    else cout<<*it<<endl;
+}
 
 
 
