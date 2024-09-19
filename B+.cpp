@@ -42,6 +42,16 @@ struct Record{
         return key == other.key;
     }
 
+    bool operator<=(Record<Tk> other) const
+    {
+        return key<=other.key;
+    }
+
+    bool operator>=(Record<Tk> other) const
+    {
+        return key>=other.key;
+    }
+
 
 
 };//24 size
@@ -407,7 +417,26 @@ public:
     }
 
     vector<Record<Tk>> range_search(Tk beg , Tk fin ){
+        fstream file_index(indexfile , ios::binary | ios::in|ios::out);
+        fstream file_data(datafile , ios::binary |ios::in | ios::out);
 
+        vector<Record<Tk>> ans= range_search(file_index , file_data , beg , fin , 0);
+        file_index.close();
+        file_data.close();
+        return ans;
+    }
+    vector<Record<Tk>> range_search  (fstream & file_index , fstream & file_data, Tk beg , Tk fin , int current_pos ) {
+        indexNode<Tk> node = read_index_node_in_pos(file_index , current_pos);
+
+        if(node.is_last)
+        {
+            int possible_pos = int(upper_bound(node.key , node.key +node.count  , beg)-&node.key[0]);
+
+            return linked_sweep(file_data , beg , fin , node.children[possible_pos]);
+        }
+        int next_index = get_next_index(node.key ,  node.count, beg , node.children );
+
+        return range_search(file_index , file_data , beg , fin , next_index);
     }
 
 
@@ -456,8 +485,50 @@ public:
     }
 
 
+
 private:
-    //funcion para buscar al elemento
+    //linked search busca los buckets encadenados de hojas en el rango
+    vector<Record<Tk>> linked_sweep(fstream & file,  Tk beg , Tk end , int pos    ){
+        vector<Record<Tk>> ans;
+
+        dataPage<Tk> b = read_page_node_in_pos(file , pos);
+        dataPage<Tk> sweep;
+        sweep.next_page = pos;
+        Record<Tk> rbeg , rend;
+        rbeg.key=beg;
+        rend.key=end;
+
+        int init_pos = int(lower_bound(b.records , b.records + b.count , rbeg )-&b.records[0]);
+
+
+
+        while (sweep.next_page!=-1)
+        {
+
+
+            sweep = read_page_node_in_pos(file , sweep.next_page);
+
+
+                for (int j = init_pos; j <sweep.count ;  ++j)
+                {   if( sweep.records[j]<=rend )
+                        ans.push_back(sweep.records[j]);
+                    else break;
+                }
+
+
+            init_pos =0;
+
+            if( ans.size()>0 and *next(ans.end(),-1)>=rend  ) break;
+
+
+
+        }
+
+        return ans;
+
+    }
+
+    //funcion para buscar al elemento de forma binaria
         Record<Tk>* search_in_page(dataPage<Tk>& page, Tk key)
         {
             int left = 0;
@@ -956,18 +1027,23 @@ int main(){
 //    }
 cout<<"_________________________________SEARCH TESTS ____________________________________"<<endl;
 //test.print_all();
-vector<int> search_key{28,29,50,33 , 100};
+//vector<int> search_key{28,29,50,33 , 100};
+//
+//
+//for(int  vals:search_key)
+//{
+//    auto *it = test.search(vals);
+//    if(it== nullptr)
+//        cout<<vals<<" not found..."<<endl;
+//    else cout<<*it<<endl;
+//}
 
 
-for(int  vals:search_key)
-{
-    auto *it = test.search(vals);
-    if(it== nullptr)
-        cout<<vals<<" not found..."<<endl;
-    else cout<<*it<<endl;
-}
 
+vector<Record<int>> ans = test.range_search(20 , 30);
 
+for(auto val:ans)
+    cout<<val<<endl;
 
 
 }
